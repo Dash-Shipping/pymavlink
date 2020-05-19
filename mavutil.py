@@ -1688,6 +1688,26 @@ def mavlink_connection(device, baud=115200, source_system=255, source_component=
                      use_native=use_native,
                      force_connected=force_connected)
 
+def dashlink_connection(device, dialect=None, zero_time_base=False,
+                        progress_callback=None, formats=None,
+                        clock=None, data_map=None):
+    global mavfile_global
+
+    if dialect is not None:
+        set_dialect(dialect)
+   
+    if device.lower().endswith('.bin') or device.lower().endswith('.px4log'):
+        # support dataflash logs
+        from pymavlink import DFReader
+        m = DFReader.DFReader_binary(device, zero_time_base=zero_time_base, progress_callback=progress_callback, formats=formats, clock=clock)
+        mavfile_global = m
+        return m
+    elif device.lower() == 'memory':
+        from pymavlink import DFReader
+        m = DFReader.DFReader_binary_mem(data_map, zero_time_base=zero_time_base, progress_callback=progress_callback, formats=formats, clock=clock)
+        mavfile_global = m
+        return m
+
 class periodic_event(object):
     '''a class for fixed frequency events'''
     def __init__(self, frequency):
