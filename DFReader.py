@@ -16,6 +16,7 @@ import math
 import sys
 import os
 import mmap
+import json
 import platform
 
 import struct
@@ -121,6 +122,9 @@ class DFFormat(object):
     def __str__(self):
         return ("DFFormat(%s,%s,%s,%s)" %
                 (self.type, self.name, self.format, self.columns))
+
+    def as_dict(self):
+        return {'type': self.type, 'name': self.name, 'flen': self.len, 'format': self.format, 'columns': ','.join(self.columns)}
 
 # Swiped into mavgen_python.py
 def to_string(s):
@@ -461,6 +465,7 @@ class DFReader(object):
         self.params = {}
         self._flightmodes = None
         self.messages = {}
+        self.good_clock = False
 
     def _rewind(self):
         '''reset state on rewind'''
@@ -483,7 +488,6 @@ class DFReader(object):
 
     def init_clock(self):
         '''work out time basis for the log'''
-
         self._rewind()
 
         # speculatively create a gps clock in case we don't find anything
@@ -513,7 +517,7 @@ class DFReader(object):
                     if not self._zero_time_base:
                         self.clock.find_time_base(m, first_us_stamp)
                     have_good_clock = True
-                    # print(f"Good clock at {self.offset}")
+                    print(f"Good clock at {self.offset}")
                     break
 
         if not have_good_clock:
@@ -524,6 +528,7 @@ class DFReader(object):
                 self.init_clock_usec()
             print("Failed to set GPS clock - no GPS entries found")
         self._rewind()
+        self.good_clock = have_good_clock
         return
 
     def _set_time(self, m):
@@ -640,6 +645,7 @@ class DFReader_binary_mem(DFReader):
         self.data_map = data_map
         self.data_len = len(data_map)
         self.offset = 0
+        self.good_clock = False
 
         self.HEAD1 = 0xA3
         self.HEAD2 = 0x95
@@ -664,12 +670,19 @@ class DFReader_binary_mem(DFReader):
         self.prev_type = None
         
         if clock:
-            self.clock = clock
+            self.clock = DFReaderClock_usec()
+            self.clock.timestamp = clock['timestamp']
+            self.clock.timebase = clock['timebase']
         else:
             self.init_clock()
         
         self.prev_type = None
         self._rewind()
+
+    def as_dict(self):
+        clock = {'timestamp': self.clock.timestamp, 'timebase': self.clock.timebase}
+        formats = {k:f.as_dict() for k, f in self.formats.items()}
+        return {'clock': clock, 'formats': formats}
 
     def reset(self, data_map):
         self.data_map = data_map
@@ -845,9 +858,10 @@ class DFReader_binary(DFReader):
         self.prev_type = None
         
         if clock:
-            self.clock = clock
+            self.clock = DFReaderClock_usec()
+            self.clock.timestamp = clock['timestamp']
+            self.clock.timebase = clock['timebase']
         else:
-            print("init clock")
             self.init_clock()
         
         self.prev_type = None
